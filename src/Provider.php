@@ -4,6 +4,7 @@ namespace SocialiteProviders\Stripe;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\ProviderInterface;
 use Laravel\Socialite\Two\User;
+use Illuminate\Http\Request;
 
 class Provider extends AbstractProvider implements ProviderInterface
 {
@@ -11,6 +12,26 @@ class Provider extends AbstractProvider implements ProviderInterface
      * {@inheritdoc}
      */
     protected $scopes = ['read_write'];
+
+    /**
+     * @var User
+     */
+    protected $user;
+
+    /**
+     * Create a new provider instance.
+     *
+     * @param  Request  $request
+     * @param  string  $clientId
+     * @param  string  $clientSecret
+     * @param  string  $redirectUrl
+     * @return void
+     */
+    public function __construct(Request $request, $clientId, $clientSecret, $redirectUrl)
+    {
+        parent::__construct($request, $clientId, $clientSecret, $redirectUrl);
+        $this->user = new User();
+    }
 
     /**
      * {@inheritdoc}
@@ -41,7 +62,6 @@ class Provider extends AbstractProvider implements ProviderInterface
                 'Authorization' => 'Bearer '.$this->clientSecret,
             ],
         ]);
-
         return json_decode($response->getBody(), true);
     }
 
@@ -50,7 +70,7 @@ class Provider extends AbstractProvider implements ProviderInterface
      */
     protected function mapUserToObject(array $user)
     {
-        return (new User())->setRaw($user)->map([
+        return $this->user->setRaw($user)->map([
             'id' => $user['id'], 'nickname' => $user['display_name'],
             'name' => null, 'email' => $user['email'], 'avatar' => null,
         ]);
@@ -64,5 +84,24 @@ class Provider extends AbstractProvider implements ProviderInterface
         return array_merge(parent::getTokenFields($code), [
             'grant_type' => 'authorization_code',
         ]);
+    }
+
+    /**
+     * Get the access token, stripe public key and refresh token from the token response body.
+     *
+     * @param  string  $body
+     * @return string
+     */
+    protected function parseAccessToken($body)
+    {
+        $body = json_decode($body, true);
+
+        $this->user->stripe_publishable_key = $body['stripe_publishable_key'];
+        $this->user->refresh_token = $body['refresh_token'];
+        $this->user->access_token = $body['access_token'];
+        $this->user->livemode = $body['livemode'];
+        $this->user->stripe_user_id = $body['stripe_user_id'];
+
+        return $body['access_token'];
     }
 }
